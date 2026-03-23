@@ -98,13 +98,21 @@ class WhatsappDriver extends HttpDriver implements VerifiesService
      */
     public function verifyRequest(Request $request)
     {
-        if($request->get('hub_mode') === 'subscribe'){
-            if ($request->get('hub_verify_token') === $this->config->get('verification')) {
-                return (new Response($request->get('hub_challenge'),200))->send();
+        $mode = $request->query->get('hub_mode', $request->get('hub_mode', $request->query->get('hub.mode')));
+        $verifyToken = $request->query->get('hub_verify_token', $request->get('hub_verify_token', $request->query->get('hub.verify_token')));
+        $challenge = $request->query->get('hub_challenge', $request->get('hub_challenge', $request->query->get('hub.challenge')));
+
+        if ($mode === 'subscribe') {
+            $response = null;
+
+            if ($verifyToken === $this->config->get('verification')) {
+                $response = new Response($challenge, 200, ['Content-Type' => 'text/plain']);
+            } else {
+                $response = new Response('Invalid verification token', 403, ['Content-Type' => 'text/plain']);
             }
-            else{
-                return (new Response('Invalid verification token', 403))->send();
-            }
+            
+            $response->send();
+            exit;
         }
     }
 
