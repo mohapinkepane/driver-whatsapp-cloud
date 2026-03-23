@@ -17,15 +17,13 @@
         }
     ],
     "require": {
-        "php": ">=7.0",
-        "botman/botman": "^2.0",
+        "php": ">=8.3",
+        "botman/botman": "^2.8.10",
         "ext-curl": "*",
-        "phpseclib/phpseclib": "^3.0"
+        "phpseclib/phpseclib": "^3.0.50"
     },
     "require-dev": {
-        "botman/studio-addons": "^1.0",
-        "illuminate/contracts": "^5.5",
-        "phpunit/phpunit": "^9.0",
+        "phpunit/phpunit": "^9.6",
         "mockery/mockery": "^1.6"
     },
     "autoload": {

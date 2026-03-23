@@ -20,12 +20,12 @@ class Contact implements JsonSerializable
     public $phones;
     public $urls;
 
-    public static function create($addresses, $birthday, $emails,Name $name,Organization $org=null, $phones, $urls)
+    public static function create($addresses, $birthday, $emails, Name $name, ?Organization $org, $phones, $urls)
     {
         return new static($addresses, $birthday, $emails, $name, $org, $phones, $urls);
     }
 
-    public function __construct($addresses, $birthday, $emails,Name $name,Organization $org=null, $phones, $urls)
+    public function __construct($addresses, $birthday, $emails, Name $name, ?Organization $org, $phones, $urls)
     {
         $this->birthday = $birthday;
         $this->name = $name;
@@ -68,7 +68,7 @@ class Contact implements JsonSerializable
         ];
     }
 
-    public function jsonSerialize()
+    public function jsonSerialize(): mixed
     {
         return $this->toArray();
     }

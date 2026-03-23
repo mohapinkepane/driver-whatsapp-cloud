@@ -78,7 +78,7 @@ class WhatsappDriverTest extends TestCase
         return $request;
     }
 
-    private function getDriver($responseData, array $config = null, $signature = '', $httpInterface = null)
+    private function getDriver($responseData, ?array $config = null, $signature = '', $httpInterface = null)
     {
         if (is_null($config)) {
             $config = [

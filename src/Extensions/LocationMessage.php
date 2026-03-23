@@ -82,7 +82,7 @@ class  LocationMessage implements JsonSerializable,WebAccess
 
     }
 
-    public function jsonSerialize()
+    public function jsonSerialize(): mixed
     {
         return $this->toArray();
     }

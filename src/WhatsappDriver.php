@@ -72,10 +72,13 @@ class WhatsappDriver extends HttpDriver implements VerifiesService
      */
     public function buildPayload(Request $request)
     {
-        $this->payload =Collection::make((array)json_decode($request->getContent(), true));
+        $content = $request->getContent();
+        $content = is_string($content) ? $content : '';
+
+        $this->payload = Collection::make((array) json_decode($content, true));
         $this->event = Collection::make(isset($this->payload->get('entry')[0]['changes'][0]['value']['messages'])?(array)$this->payload->get('entry')[0]['changes'][0]['value']['messages'][0]:null);
         $this->signature = $request->headers->get('X_HUB_SIGNATURE_256','');
-        $this->content = $request->getContent();
+        $this->content = $content;
         $this->config = Collection::make($this->config->get('whatsapp', []));
     }
 
@@ -180,7 +183,7 @@ class WhatsappDriver extends HttpDriver implements VerifiesService
      */
     public function typesAndWaits(IncomingMessage $matchingMessage, float $seconds)
     {
-        sleep($seconds);
+        usleep((int) round($seconds * 1000000));
     }
 
 
