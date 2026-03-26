@@ -32,7 +32,7 @@ class User extends BotManUser implements UserInterface
      */
     public function getWA_ID()
     {
-        return isset($this->user_info['wa_id']) ? $this->user_info['wa_id'] : null;
+        return $this->getPhoneNumber();
 
     }
 
@@ -41,8 +41,36 @@ class User extends BotManUser implements UserInterface
      */
     public function getPhoneNumber()
     {
-        return isset($this->user_info['wa_id']) ? $this->user_info['wa_id'] : null;
+        if (isset($this->user_info['wa_id']) && $this->user_info['wa_id'] !== '') {
+            return $this->user_info['wa_id'];
+        }
 
+        return isset($this->user_info['from']) && $this->user_info['from'] !== '' ? $this->user_info['from'] : null;
+
+    }
+
+    /**
+     * @return string|null
+     */
+    public function getUserId()
+    {
+        if (isset($this->user_info['user_id']) && $this->user_info['user_id'] !== '') {
+            return $this->user_info['user_id'];
+        }
+
+        return isset($this->user_info['from_user_id']) && $this->user_info['from_user_id'] !== '' ? $this->user_info['from_user_id'] : null;
+    }
+
+    /**
+     * @return string|null
+     */
+    public function getParentUserId()
+    {
+        if (isset($this->user_info['parent_user_id']) && $this->user_info['parent_user_id'] !== '') {
+            return $this->user_info['parent_user_id'];
+        }
+
+        return isset($this->user_info['from_parent_user_id']) && $this->user_info['from_parent_user_id'] !== '' ? $this->user_info['from_parent_user_id'] : null;
     }
 
     /**
@@ -54,5 +82,14 @@ class User extends BotManUser implements UserInterface
 
     }
 
- 
+    /**
+     * @return string|null
+     */
+    public function getWhatsAppUsername()
+    {
+        return isset($this->user_info['profile']['username']) ? $this->user_info['profile']['username'] : null;
+
+    }
+
+  
 }

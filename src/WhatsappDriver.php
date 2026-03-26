@@ -90,7 +90,8 @@ class WhatsappDriver extends HttpDriver implements VerifiesService
     public function matchesRequest()
     {
         $validSignature = empty($this->config->get('app_secret')) || $this->validateSignature();
-        $matchesDriverMessage=!is_null($this->payload->get('contacts')) || !is_null($this->event->get('from'));
+        $messagingValue = $this->getMessagingValue();
+        $matchesDriverMessage = isset($messagingValue['messages'][0]) || isset($messagingValue['contacts'][0]);
         $validPhoneNumberId=$this->validatePhoneNumberId();
         return $matchesDriverMessage && $validSignature&&$validPhoneNumberId;
     }
@@ -295,10 +296,14 @@ class WhatsappDriver extends HttpDriver implements VerifiesService
 
         if (!empty($message)) {
             $this->messages = [
-            $message
-            ->addExtras('id',$this->getMessageID())
-            ->addExtras('type',$this->event->get('type'))
-          ];
+             $message
+             ->addExtras('id',$this->getMessageID())
+             ->addExtras('type',$this->event->get('type'))
+             ->addExtras('wa_id', $this->getMessageSenderPhoneNumber())
+             ->addExtras('phone_number', $this->getMessageSenderPhoneNumber())
+             ->addExtras('user_id', $this->getMessageSenderUserId())
+             ->addExtras('parent_user_id', $this->getMessageSenderParentUserId())
+           ];
         }
 
 
@@ -353,12 +358,121 @@ class WhatsappDriver extends HttpDriver implements VerifiesService
     }
 
     /**
+     * @return array
+     */
+    protected function getMessagingValue()
+    {
+        $payload = $this->getMessagePayload();
+
+        return is_array($payload) ? $payload : [];
+    }
+
+    /**
+     * @return Collection
+     */
+    protected function getPrimaryContact()
+    {
+        $messagingValue = $this->getMessagingValue();
+
+        return Collection::make(isset($messagingValue['contacts'][0]) ? $messagingValue['contacts'][0] : []);
+    }
+
+    /**
+     * @return string|null
+     */
+    protected function getMessageSenderUserId()
+    {
+        $contact = $this->getPrimaryContact();
+
+        foreach (['user_id', 'from_user_id'] as $key) {
+            $value = $contact->get($key);
+
+            if (!is_null($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        $value = $this->event->get('from_user_id');
+
+        return (!is_null($value) && $value !== '') ? $value : null;
+    }
+
+    /**
+     * @return string|null
+     */
+    protected function getMessageSenderParentUserId()
+    {
+        $contact = $this->getPrimaryContact();
+
+        foreach (['parent_user_id', 'from_parent_user_id'] as $key) {
+            $value = $contact->get($key);
+
+            if (!is_null($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        $value = $this->event->get('from_parent_user_id');
+
+        return (!is_null($value) && $value !== '') ? $value : null;
+    }
+
+    /**
+     * @return string|null
+     */
+    protected function getMessageSenderPhoneNumber()
+    {
+        $contactWaId = $this->getPrimaryContact()->get('wa_id');
+
+        if (!is_null($contactWaId) && $contactWaId !== '') {
+            return $contactWaId;
+        }
+
+        $from = $this->event->get('from');
+
+        return (!is_null($from) && $from !== '') ? $from : null;
+    }
+
+    /**
+     * @return string|null
+     */
+    protected function getCanonicalMessageSender()
+    {
+        foreach ([
+            $this->getMessageSenderUserId(),
+            $this->getMessageSenderParentUserId(),
+            $this->getMessageSenderPhoneNumber(),
+        ] as $identifier) {
+            if (!is_null($identifier) && $identifier !== '') {
+                return $identifier;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param string|null $identifier
+     * @return bool
+     */
+    protected function isBusinessScopedUserId($identifier)
+    {
+        if (!is_string($identifier) || $identifier === '') {
+            return false;
+        }
+
+        return preg_match('/[A-Za-z]/', $identifier) === 1 || strpos($identifier, '.') !== false;
+    }
+
+    /**
      * @return string|null
      */
     protected function getMessageSender()
     {
-        if (!is_null($this->event->get('from'))) {
-            return $this->event->get('from');
+        $sender = $this->getCanonicalMessageSender();
+
+        if (!is_null($sender)) {
+            return $sender;
         } else{
             return null;
         }
@@ -396,20 +510,44 @@ class WhatsappDriver extends HttpDriver implements VerifiesService
      */
     public function getUser(IncomingMessage $matchingMessage)
     {
+        $contact = $this->getPrimaryContact();
 
-        $messagingDetails=$this->payload->get('entry')[0]['changes'][0]['value'];
-        if(isset($messagingDetails['contacts'][0])){
-            $contact=Collection::make($this->payload->get('entry')[0]['changes'][0]['value']['contacts'][0]);
-        }else{
-            $contact=Collection::make([]);
+        if ($contact->isEmpty()) {
+            $userId = $this->getMessageSenderUserId();
+            $parentUserId = $this->getMessageSenderParentUserId();
+
+            return new User(
+                $userId ?? $parentUserId,
+                null,
+                null,
+                $userId ?? $parentUserId,
+                array_filter([
+                    'user_id' => $userId,
+                    'parent_user_id' => $parentUserId,
+                    'from_user_id' => $this->event->get('from_user_id'),
+                    'from_parent_user_id' => $this->event->get('from_parent_user_id'),
+                ], function ($value) {
+                    return !is_null($value) && $value !== '';
+                })
+            );
         }
 
+        $profile = Collection::make((array) $contact->get('profile', []));
+        $userInfo = array_merge($contact->toArray(), [
+            'wa_id' => $contact->get('wa_id', $this->getMessageSenderPhoneNumber()),
+            'user_id' => $contact->get('user_id', $this->getMessageSenderUserId()),
+            'parent_user_id' => $contact->get('parent_user_id', $this->getMessageSenderParentUserId()),
+            'from' => $this->event->get('from'),
+            'from_user_id' => $this->event->get('from_user_id'),
+            'from_parent_user_id' => $this->event->get('from_parent_user_id'),
+        ]);
+
         return new User(
-            $contact->get('wa_id'),
-            isset($contact->get('profile')['name'])?$contact->get('profile')['name']:null,
+            $this->getCanonicalMessageSender(),
+            $profile->get('name'),
             null,
-            $contact->get('wa_id'),
-            $contact->toArray()
+            $profile->get('username', $userInfo['wa_id'] ?? $userInfo['user_id'] ?? $userInfo['parent_user_id'] ?? null),
+            $userInfo
         );
     }
 
@@ -479,11 +617,20 @@ class WhatsappDriver extends HttpDriver implements VerifiesService
 
         $recipient = $matchingMessage->getSender() === '' ? $matchingMessage->getRecipient(): $matchingMessage->getSender();
 
-        $parameters = array_merge_recursive([
+        $baseParameters = [
             'messaging_product' => 'whatsapp',
             'recipient_type' => 'individual',
-            'to' => $recipient,
-        ], $additionalParameters);
+        ];
+
+        if (!array_key_exists('to', $additionalParameters) && !array_key_exists('recipient', $additionalParameters)) {
+            if ($this->isBusinessScopedUserId($recipient)) {
+                $baseParameters['recipient'] = $recipient;
+            } else {
+                $baseParameters['to'] = $recipient;
+            }
+        }
+
+        $parameters = array_merge_recursive($baseParameters, $additionalParameters);
 
         if ($message instanceof Question) {
             $parameters = array_replace_recursive($parameters,$this->convertQuestion($message));

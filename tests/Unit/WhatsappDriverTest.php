@@ -102,6 +102,38 @@ class WhatsappDriverTest extends TestCase
         return $this->config['url'] . '/' . $this->config['version'] . '/' . $this->config['phone_number_id'] . '/' . 'messages';
     }
 
+    private function inboundPayload(?array $contact = null, ?array $message = null, array $valueOverrides = []): string
+    {
+        $value = [
+            'messaging_product' => 'whatsapp',
+            'metadata' => [
+                'display_phone_number' => '16505553333',
+                'phone_number_id' => '27681414235104944',
+            ],
+        ];
+
+        if (!is_null($contact)) {
+            $value['contacts'] = [$contact];
+        }
+
+        if (!is_null($message)) {
+            $value['messages'] = [$message];
+        }
+
+        $value = array_replace_recursive($value, $valueOverrides);
+
+        return json_encode([
+            'object' => 'whatsapp_business_account',
+            'entry' => [[
+                'id' => '8856996819413533',
+                'changes' => [[
+                    'value' => $value,
+                    'field' => 'messages',
+                ]],
+            ]],
+        ]);
+    }
+
     private function buildAuthHeader()
     {
         return [
@@ -176,6 +208,34 @@ class WhatsappDriverTest extends TestCase
         $request = '{"object":"whatsapp_business_account","entry":[{"id":"8856996819413533","changes":[{"value":{"messaging_product":"whatsapp","metadata":{"display_phone_number":"16505553333","phone_number_id":"27681414235104944"},"contacts":[{"profile":{"name":"Kerry Fisher"},"wa_id":"16315551234"}],"messages":[{"from":"16315551234","id":"wamid.ABGGFlCGg0cvAgo-sJQh43L5Pe4W","timestamp":"1603059201","text":{"body":"Hello this is an answer"},"type":"text"}]},"field":"messages"}]}]}';
         $driver = $this->getDriver($request,$config,$signature);
         $this->assertTrue($driver->matchesRequest());
+
+        $config = [
+            'whatsapp' => [
+                'token' => 'test_token',
+                'app_secret' => null,
+                'phone_number_id' => '27681414235104944',
+            ],
+        ];
+        $request = $this->inboundPayload(
+            [
+                'profile' => [
+                    'name' => 'Kerry Fisher',
+                    'username' => 'kerry',
+                ],
+                'user_id' => 'US.13491208655302741918',
+                'parent_user_id' => 'US.ENT.11815799212886844830',
+            ],
+            [
+                'id' => 'wamid.ABGGFlCGg0cvAgo-sJQh43L5Pe4W',
+                'timestamp' => '1603059201',
+                'text' => ['body' => 'Hello this is an answer'],
+                'type' => 'text',
+                'from_user_id' => 'US.13491208655302741918',
+                'from_parent_user_id' => 'US.ENT.11815799212886844830',
+            ]
+        );
+        $driver = $this->getDriver($request, $config);
+        $this->assertTrue($driver->matchesRequest());
     }
 
 
@@ -246,6 +306,48 @@ class WhatsappDriverTest extends TestCase
         $this->assertEquals(null, $user->getId());
         $this->assertEquals(null, $user->getFirstName());
       
+    }
+
+    public function testReturnsBusinessScopedUser()
+    {
+        $request = $this->inboundPayload(
+            [
+                'profile' => [
+                    'name' => 'Kerry Fisher',
+                    'username' => 'kerry',
+                ],
+                'user_id' => 'US.13491208655302741918',
+                'parent_user_id' => 'US.ENT.11815799212886844830',
+            ],
+            [
+                'id' => 'wamid.ABGGFlCGg0cvAgo-sJQh43L5Pe4W',
+                'timestamp' => '1603059201',
+                'text' => ['body' => 'Hello this is an answer'],
+                'type' => 'text',
+                'from_user_id' => 'US.13491208655302741918',
+                'from_parent_user_id' => 'US.ENT.11815799212886844830',
+            ]
+        );
+        $driver = $this->getDriver($request);
+
+        $message = $driver->getMessages()[0];
+        $user = $driver->getUser($message);
+
+        $this->assertInstanceOf(\BotMan\Drivers\Whatsapp\Extensions\User::class, $user);
+        /** @var \BotMan\Drivers\Whatsapp\Extensions\User $user */
+
+        $this->assertSame('US.13491208655302741918', $message->getSender());
+        $this->assertSame('US.13491208655302741918', $message->getExtras('user_id'));
+        $this->assertSame('US.ENT.11815799212886844830', $message->getExtras('parent_user_id'));
+        $this->assertNull($message->getExtras('phone_number'));
+        $this->assertEquals('US.13491208655302741918', $user->getId());
+        $this->assertEquals('US.13491208655302741918', $user->getUserId());
+        $this->assertEquals('US.ENT.11815799212886844830', $user->getParentUserId());
+        $this->assertEquals('Kerry Fisher', $user->getFirstName());
+        $this->assertEquals('kerry', $user->getUsername());
+        $this->assertEquals('kerry', $user->getWhatsAppUsername());
+        $this->assertNull($user->getPhoneNumber());
+        $this->assertNull($user->getWA_ID());
     }
 
     public function testReturnsTheRecipientId()
@@ -327,6 +429,30 @@ class WhatsappDriverTest extends TestCase
 
         $driver = $this->getDriver($request,[]);
         $this->assertFalse($driver->isConfigured());
+    }
+
+    public function testBuildServicePayloadUsesRecipientForBusinessScopedUsers()
+    {
+        $driver = $this->getDriver('{}');
+        $matchingMessage = new IncomingMessage('', 'US.13491208655302741918', '');
+
+        $payload = $driver->buildServicePayload('Hello there', $matchingMessage);
+
+        $this->assertArrayHasKey('recipient', $payload);
+        $this->assertSame('US.13491208655302741918', $payload['recipient']);
+        $this->assertArrayNotHasKey('to', $payload);
+    }
+
+    public function testBuildServicePayloadKeepsToForPhoneNumbers()
+    {
+        $driver = $this->getDriver('{}');
+        $matchingMessage = new IncomingMessage('', '16315551234', '');
+
+        $payload = $driver->buildServicePayload('Hello there', $matchingMessage);
+
+        $this->assertArrayHasKey('to', $payload);
+        $this->assertSame('16315551234', $payload['to']);
+        $this->assertArrayNotHasKey('recipient', $payload);
     }
     
 }

@@ -46,6 +46,20 @@ class UserTest extends TestCase
         $this->assertEquals('Jane Doe', $user->getWhatsAppName());
     }
 
+    public function testGetBusinessScopedIdentifiers()
+    {
+        $user = new User(null, null, null, null, [
+            'user_id' => 'US.13491208655302741918',
+            'parent_user_id' => 'US.ENT.11815799212886844830',
+            'profile' => ['username' => 'janedoe'],
+        ]);
+
+        $this->assertEquals('US.13491208655302741918', $user->getUserId());
+        $this->assertEquals('US.ENT.11815799212886844830', $user->getParentUserId());
+        $this->assertEquals('janedoe', $user->getWhatsAppUsername());
+        $this->assertNull($user->getPhoneNumber());
+    }
+
     public function testMissingWA_ID()
     {
         $user = new User();
