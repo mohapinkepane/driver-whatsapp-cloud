@@ -174,6 +174,37 @@ This is the contents of the file that will be published at config/botman/whatsap
 
 
 
+## Business-scoped user IDs
+
+WhatsApp can now send business-scoped user IDs (BSUIDs) in webhook payloads.
+
+This driver supports both legacy phone-number-based identifiers and the newer BSUID fields.
+
+- `IncomingMessage::getSender()` may return a BSUID, parent BSUID, or a phone number depending on what WhatsApp provides.
+- `wa_id` and `from` should be treated as optional legacy phone-number fields.
+- The driver prefers `user_id` / `from_user_id` and falls back to `parent_user_id` / `from_parent_user_id`, then to phone-number-based identifiers.
+- Outbound replies remain backward-compatible: the driver uses `to` for phone numbers and `recipient` for BSUIDs automatically.
+
+If you need user details from the driver, you can access them from the WhatsApp user object:
+
+    $user = $bot->getUser();
+
+    $user->getId();                // Canonical identifier used by the driver
+    $user->getUserId();            // BSUID when available
+    $user->getParentUserId();      // Parent BSUID when available
+    $user->getPhoneNumber();       // Phone number when available
+    $user->getWA_ID();             // Legacy alias for phone number
+    $user->getWhatsAppName();
+    $user->getWhatsAppUsername();  // Username when available
+
+Incoming message extras also expose the resolved identifiers:
+
+    $message->getSender();
+    $message->getExtras('user_id');
+    $message->getExtras('parent_user_id');
+    $message->getExtras('phone_number');
+    $message->getExtras('wa_id');
+
 ## Supported Features
 
 - [x] Text Message
@@ -756,6 +787,14 @@ You can achieve this by chaining  the method: contextMessageId('message-id-here'
 The IncomingMessage class contains the message ID in its extras.
 You can get it by calling the method: getExtras('id') on an instance of this class.
 
+When WhatsApp sends business-scoped user IDs, you can also inspect these extras on the same message instance:
+
+    $message->getSender();               // BSUID, parent BSUID, or phone number
+    $message->getExtras('user_id');
+    $message->getExtras('parent_user_id');
+    $message->getExtras('phone_number');
+    $message->getExtras('wa_id');
+
 
 ## Mark seen
 
@@ -809,6 +848,8 @@ In receiving(recieved) Middleware
         }
         return $next($message);
     }
+
+The sender returned by `$message->getSender()` can be a BSUID instead of a phone number. The driver will still route replies correctly.
 
 In a coversation
 
