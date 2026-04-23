@@ -82,19 +82,33 @@ class WhatsappDriver extends HttpDriver implements VerifiesService
         $this->config = Collection::make($this->config->get('whatsapp', []));
     }
 
-    /**
-     * Determine if the request is for this driver.
-     *
-     * @return bool
-     */
-    public function matchesRequest()
-    {
-        $validSignature = empty($this->config->get('app_secret')) || $this->validateSignature();
-        $messagingValue = $this->getMessagingValue();
-        $matchesDriverMessage = isset($messagingValue['messages'][0]) || isset($messagingValue['contacts'][0]);
-        $validPhoneNumberId=$this->validatePhoneNumberId();
-        return $matchesDriverMessage && $validSignature&&$validPhoneNumberId;
+/**
+ * Determine if the request is for this driver.
+ *
+ * @return bool
+ */
+public function matchesRequest()
+{
+    $validSignature = empty($this->config->get('app_secret')) || $this->validateSignature();
+    $messagingValue = $this->getMessagingValue();
+
+    //Filter out status updates (sent, delivered, read, failed)
+    if (isset($messagingValue['statuses']) && !isset($messagingValue['messages'])) {
+        return false;
     }
+
+    //Filter out payloads with no messages and no contacts
+    if (empty($messagingValue['messages']) && empty($messagingValue['contacts'])) {
+        return false;
+    }
+
+    $matchesDriverMessage = isset($messagingValue['messages'][0]) || isset($messagingValue['contacts'][0]);
+    $validPhoneNumberId = $this->validatePhoneNumberId();
+
+    return $matchesDriverMessage && $validSignature && $validPhoneNumberId;
+}
+
+
 
     /**
      * @param  Request  $request
@@ -114,7 +128,7 @@ class WhatsappDriver extends HttpDriver implements VerifiesService
             } else {
                 $response = new Response('Invalid verification token', 403, ['Content-Type' => 'text/plain']);
             }
-            
+
             $response->send();
             exit;
         }
@@ -439,9 +453,9 @@ class WhatsappDriver extends HttpDriver implements VerifiesService
     protected function getCanonicalMessageSender()
     {
         foreach ([
+            $this->getMessageSenderPhoneNumber(),
             $this->getMessageSenderUserId(),
             $this->getMessageSenderParentUserId(),
-            $this->getMessageSenderPhoneNumber(),
         ] as $identifier) {
             if (!is_null($identifier) && $identifier !== '') {
                 return $identifier;
